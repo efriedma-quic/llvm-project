@@ -1300,6 +1300,18 @@ public:
   }
 
   llvm::Constant *VisitInitListExpr(InitListExpr *ILE, QualType T) {
+    if (!CGM.getContext().getLangOpts().CPlusPlus &&
+        ILE->getNumInits() == 0) {
+      // C23 6.7.10 says empty initializer lists are subject to "default
+      // initialization"; unlike normal initializer list handling, this
+      // also initializes padding to zero.
+      //
+      // We extend this back to all versions of C as an extension.
+      //
+      // C++ doesn't require this.
+      return CGM.EmitNullConstant(T);
+    }
+
     if (ILE->isTransparent())
       return Visit(ILE->getInit(0), T);
 
@@ -2337,6 +2349,8 @@ static llvm::Constant *EmitNullConstant(CodeGenModule &CGM,
   }
 
   // Now go through all other fields and zero them out.
+  //
+  // Note that some users of EmitNullConstant assume that padding is zeroed.
   for (unsigned i = 0; i != numElements; ++i) {
     if (!elements[i])
       elements[i] = llvm::Constant::getNullValue(structure->getElementType(i));

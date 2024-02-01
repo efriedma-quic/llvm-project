@@ -10246,6 +10246,10 @@ bool RecordExprEvaluator::VisitCXXParenListOrInitListExpr(
   const ASTRecordLayout &Layout = Info.Ctx.getASTRecordLayout(RD);
   auto *CXXRD = dyn_cast<CXXRecordDecl>(RD);
 
+  // FIXME: Need to implement C23 empty initialization rule: the rule
+  // requires initializing padding to zero, but we currently don't model
+  // padding.
+
   EvalInfo::EvaluatingConstructorRAII EvalObj(
       Info,
       ObjectUnderConstruction{This.getLValueBase(), This.Designator.Entries},

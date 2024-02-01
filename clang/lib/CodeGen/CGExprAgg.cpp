@@ -1667,6 +1667,16 @@ void AggExprEmitter::VisitCXXParenListOrInitListExpr(
            "you can only use an empty initializer with VLAs");
     CGF.EmitNullInitialization(Dest.getAddress(), ExprToVisit->getType());
     return;
+  } else if (!CGF.getLangOpts().CPlusPlus && InitExprs.size() == 0) {
+    // C23 6.7.10 says empty initializer lists are subject to "default
+    // initialization"; unlike normal initializer list handling, this
+    // also initializes padding to zero, so we need to do it explicitly.
+    //
+    // We extend this back to all versions of C as an extension.
+    //
+    // C++ doesn't require this, and if we wanted to do this we'd need to
+    // reason about some C++-specific special cases like padding reuse.
+    CGF.EmitNullInitialization(Dest.getAddress(), ExprToVisit->getType());
   }
 
   assert(ExprToVisit->getType()->isRecordType() &&
