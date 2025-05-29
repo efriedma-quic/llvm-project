@@ -1278,12 +1278,14 @@ void CodeViewDebug::collectVariableInfoFromMFTable(
         TFI->getFrameIndexReference(*Asm->MF, VI.getStackSlot(), FrameReg);
     uint16_t CVReg = TRI->getCodeViewRegNum(FrameReg);
 
-    assert(!FrameOffset.getScalable() &&
-           "Frame offsets with a scalable component are not supported");
+    // FIXME: Assume the scale factor is one, to avoid crashing. We can fix
+    // once we have information on the correct encoding.
+    uint64_t FrameOffsetFixed =
+        FrameOffset.getFixed() + FrameOffset.getScalable();
 
     // Calculate the label ranges.
     LocalVarDef DefRange =
-        createDefRangeMem(CVReg, FrameOffset.getFixed() + ExprOffset);
+        createDefRangeMem(CVReg, FrameOffsetFixed + ExprOffset);
 
     LocalVariable Var;
     Var.DIVar = VI.Var;
