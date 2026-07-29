@@ -304,11 +304,31 @@ Sema::BuildCXXExpansionStmtDecl(DeclContext *Ctx, SourceLocation TemplateKWLoc,
   return Result;
 }
 
-ExprResult Sema::ActOnCXXExpansionInitList(MultiExprArg SubExprs,
-                                           SourceLocation LBraceLoc,
-                                           SourceLocation RBraceLoc) {
-  return new (Context) InitListExpr(Context, LBraceLoc, SubExprs, RBraceLoc,
-                                    /*IsExplicit=*/true);
+StmtResult Sema::ActOnCXXEnumeratingExpansionStmtPattern(
+    CXXExpansionStmtDecl *ESD, Stmt *Init, Stmt *ExpansionVarStmt,
+    SmallVector<Expr *, 0> &ExpansionInitListLifetimeRangeExprs,
+    SmallVector<SmallVector<MaterializeTemporaryExpr *, 8>, 0>
+        &ExpansionInitListLifetimeExtendTemps,
+    SourceLocation LParenLoc, SourceLocation ColonLoc, SourceLocation RParenLoc,
+    ArrayRef<MaterializeTemporaryExpr *> LifetimeExtendTemps) {
+  // FIXME: Track brace locations.
+  SourceLocation LBraceLoc{}, RBraceLoc{};
+  auto ILE = new (Context) InitListExpr(
+      Context, LBraceLoc, ExpansionInitListLifetimeRangeExprs, RBraceLoc,
+      /*IsExplicit=*/true);
+  auto *DS = cast<DeclStmt>(ExpansionVarStmt);
+  VarDecl *ExpansionVar = dyn_cast<VarDecl>(DS->getSingleDecl());
+  if (!ExpansionVar || ExpansionVar->isInvalidDecl())
+    return StmtError();
+  ExprResult Initializer =
+      BuildCXXExpansionSelectExpr(ILE, BuildIndexDRE(*this, ESD));
+  if (FinalizeExpansionVar(*this, ExpansionVar, Initializer))
+    return StmtError();
+
+  // TODO: CWG3043 (lifetime extension in enumerating expansion statements).
+  // Currently discarding ExpansionInitListLifetimeExtendTemps.
+  return BuildCXXEnumeratingExpansionStmtPattern(ESD, Init, DS, LParenLoc,
+                                                 ColonLoc, RParenLoc);
 }
 
 StmtResult Sema::ActOnCXXExpansionStmtPattern(
@@ -330,19 +350,6 @@ StmtResult Sema::ActOnCXXExpansionStmtPattern(
   VarDecl *ExpansionVar = dyn_cast<VarDecl>(DS->getSingleDecl());
   if (!ExpansionVar || ExpansionVar->isInvalidDecl())
     return StmtError();
-
-  // This is an enumerating expansion statement.
-  if (auto *ILE = dyn_cast<InitListExpr>(ExpansionInitializer)) {
-    assert(ILE->isSyntacticForm());
-    ExprResult Initializer =
-        BuildCXXExpansionSelectExpr(ILE, BuildIndexDRE(*this, ESD));
-    if (FinalizeExpansionVar(*this, ExpansionVar, Initializer))
-      return StmtError();
-
-    // TODO: CWG3043 (lifetime extension in enumerating expansion statements).
-    return BuildCXXEnumeratingExpansionStmtPattern(ESD, Init, DS, LParenLoc,
-                                                   ColonLoc, RParenLoc);
-  }
 
   if (ExpansionInitializer->hasPlaceholderType()) {
     ExprResult R = CheckPlaceholderExpr(ExpansionInitializer);

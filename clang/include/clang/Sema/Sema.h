@@ -15861,14 +15861,18 @@ public:
   BuildCXXExpansionStmtDecl(DeclContext *Ctx, SourceLocation TemplateKWLoc,
                             NonTypeTemplateParmDecl *NTTP);
 
-  ExprResult ActOnCXXExpansionInitList(MultiExprArg SubExprs,
-                                       SourceLocation LBraceLoc,
-                                       SourceLocation RBraceLoc);
-
   StmtResult ActOnCXXExpansionStmtPattern(
       CXXExpansionStmtDecl *ESD, Stmt *Init, Stmt *ExpansionVarStmt,
       Expr *ExpansionInitializer, SourceLocation LParenLoc,
       SourceLocation ColonLoc, SourceLocation RParenLoc,
+      ArrayRef<MaterializeTemporaryExpr *> LifetimeExtendTemps);
+  StmtResult ActOnCXXEnumeratingExpansionStmtPattern(
+      CXXExpansionStmtDecl *ESD, Stmt *Init, Stmt *ExpansionVarStmt,
+      SmallVector<Expr *, 0> &ExpansionInitListLifetimeRangeExprs,
+      SmallVector<SmallVector<MaterializeTemporaryExpr *, 8>, 0>
+          &ExpansionInitListLifetimeExtendTemps,
+      SourceLocation LParenLoc, SourceLocation ColonLoc,
+      SourceLocation RParenLoc,
       ArrayRef<MaterializeTemporaryExpr *> LifetimeExtendTemps);
 
   StmtResult FinishCXXExpansionStmt(Stmt *Expansion, Stmt *Body);

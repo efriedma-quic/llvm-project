@@ -1752,6 +1752,9 @@ private:
     SourceLocation ColonLoc;
     ExprResult RangeExpr;
     SmallVector<MaterializeTemporaryExpr *, 8> LifetimeExtendTemps;
+    SmallVector<Expr *, 0> ExpansionInitListLifetimeRangeExprs;
+    SmallVector<SmallVector<MaterializeTemporaryExpr *, 8>, 0>
+        ExpansionInitListLifetimeExtendTemps;
     CXXExpansionStmtDecl *ExpansionStmt = nullptr;
     bool ParsedForRangeDecl() { return !ColonLoc.isInvalid(); }
   };
@@ -4232,8 +4235,7 @@ private:
   bool ParseExpressionList(SmallVectorImpl<Expr *> &Exprs,
                            llvm::function_ref<void()> ExpressionStarts =
                                llvm::function_ref<void()>(),
-                           bool FailImmediatelyOnInvalidExpr = false,
-                           bool ParsingExpansionStmtInitList = false);
+                           bool FailImmediatelyOnInvalidExpr = false);
 
   /// ParseSimpleExpressionList - A simple comma-separated list of expressions,
   /// used for misc language extensions.
@@ -5327,7 +5329,7 @@ private:
   ///          '{' expression-list ','[opt] '}'
   ///          '{' '}'
   /// \endverbatim
-  ExprResult ParseExpansionInitList();
+  void ParseExpansionInitList(ForRangeInit &FRI);
 
   struct DesignatorCompletionInfo {
     SmallVectorImpl<Expr *> &InitExprs;

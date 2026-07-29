@@ -516,23 +516,42 @@ ExprResult Parser::ParseBraceInitializer() {
   return ExprError(); // an error occurred.
 }
 
-ExprResult Parser::ParseExpansionInitList() {
+void Parser::ParseExpansionInitList(ForRangeInit &FRI) {
   BalancedDelimiterTracker T(*this, tok::l_brace);
   T.consumeOpen();
 
-  ExprVector InitExprs;
+  while (!Tok.is(tok::r_brace)) {
+    ExprResult Expr;
+    if (Tok.is(tok::l_brace))
+      Expr = ParseBraceInitializer();
+    else
+      Expr = ParseAssignmentExpression();
 
-  if (!Tok.is(tok::r_brace) &&
-      ParseExpressionList(InitExprs, /*ExpressionStarts=*/{},
-                          /*FailImmediatelyOnInvalidExpr=*/false,
-                          /*ParsingExpansionStmtInitList=*/true)) {
-    T.consumeClose();
-    return ExprError();
+    if (Tok.is(tok::ellipsis))
+      Expr = Actions.ActOnPackExpansion(Expr.get(), ConsumeToken());
+
+    if (Expr.isInvalid()) {
+      SkipUntil(tok::comma, tok::r_brace, StopAtSemi | StopBeforeMatch);
+    } else {
+      // Each element of the list is a full-expression; create cleanups, and
+      // track lifetime-extended temporaries.
+      Expr = Actions.MaybeCreateExprWithCleanups(Expr);
+      FRI.ExpansionInitListLifetimeRangeExprs.push_back(Expr.get());
+      FRI.ExpansionInitListLifetimeExtendTemps.push_back(std::move(
+          Actions.ExprEvalContexts.back().ForRangeLifetimeExtendTemps));
+      Actions.ExprEvalContexts.back().ForRangeLifetimeExtendTemps.clear();
+    }
+
+    if (Tok.isNot(tok::comma))
+      break;
+    // Move to the next argument, remember where the comma was.
+    Token Comma = Tok;
+    ConsumeToken();
+
+    checkPotentialAngleBracketDelimiter(Comma);
   }
 
   T.consumeClose();
-  return Actions.ActOnCXXExpansionInitList(InitExprs, T.getOpenLocation(),
-                                           T.getCloseLocation());
 }
 
 bool Parser::ParseMicrosoftIfExistsBraceInitializer(ExprVector &InitExprs,

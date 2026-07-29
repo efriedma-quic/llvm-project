@@ -1965,9 +1965,11 @@ void Parser::ParseForRangeInitializerAfterColon(ForRangeInit &FRI,
     assert(Actions.CurContext->isExpansionStmt());
     Sema::ContextRAII CtxGuard(Actions, Actions.CurContext->getParent(),
                                /*NewThis=*/false);
-    FRI.RangeExpr =
-        Tok.is(tok::l_brace) ? ParseExpansionInitList() : ParseExpression();
-    FRI.RangeExpr = Actions.MaybeCreateExprWithCleanups(FRI.RangeExpr);
+    if (Tok.is(tok::l_brace)) {
+      ParseExpansionInitList(FRI);
+      return;
+    }
+    FRI.RangeExpr = Actions.MaybeCreateExprWithCleanups(ParseExpression());
   } else if (Tok.is(tok::l_brace)) {
     FRI.RangeExpr = ParseBraceInitializer();
   } else {
@@ -2306,11 +2308,20 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc,
   StmtResult ForEachStmt;
 
   if (ESD) {
-    ForRangeStmt = Actions.ActOnCXXExpansionStmtPattern(
-        ESD, FirstPart.get(), ForRangeInfo.LoopVar.get(),
-        ForRangeInfo.RangeExpr.get(), T.getOpenLocation(),
-        ForRangeInfo.ColonLoc, T.getCloseLocation(),
-        ForRangeInfo.LifetimeExtendTemps);
+    if (ForRangeInfo.RangeExpr.get()) {
+      ForRangeStmt = Actions.ActOnCXXExpansionStmtPattern(
+          ESD, FirstPart.get(), ForRangeInfo.LoopVar.get(),
+          ForRangeInfo.RangeExpr.get(), T.getOpenLocation(),
+          ForRangeInfo.ColonLoc, T.getCloseLocation(),
+          ForRangeInfo.LifetimeExtendTemps);
+    } else {
+      ForRangeStmt = Actions.ActOnCXXEnumeratingExpansionStmtPattern(
+          ESD, FirstPart.get(), ForRangeInfo.LoopVar.get(),
+          ForRangeInfo.ExpansionInitListLifetimeRangeExprs,
+          ForRangeInfo.ExpansionInitListLifetimeExtendTemps,
+          T.getOpenLocation(), ForRangeInfo.ColonLoc, T.getCloseLocation(),
+          ForRangeInfo.LifetimeExtendTemps);
+    }
   } else if (ForRangeInfo.ParsedForRangeDecl()) {
     ForRangeStmt = Actions.ActOnCXXForRangeStmt(
         getCurScope(), ForLoc, CoawaitLoc, FirstPart.get(),
