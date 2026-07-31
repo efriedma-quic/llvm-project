@@ -36,6 +36,14 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    "--triple",
+    metavar="triple",
+    dest="triple",
+    required=True,
+    help="Target triple to pass to clang",
+)
+
+parser.add_argument(
     "--libs-dir",
     metavar="directory",
     dest="libs_dir",
@@ -296,6 +304,7 @@ class Builder(object):
         self.obj_ext = obj_ext
         self.lib_paths = args.libs_dir
         self.std = args.std
+        self.triple = args.triple
         assert (
             not args.objc_gnustep or args.objc_gnustep_dir
         ), "--objc-gnustep specified without path to libobjc2"
@@ -682,6 +691,9 @@ class MsvcBuilder(Builder):
         if self.std:
             args.append("/std:" + self.std)
 
+        if self.triple:
+            args.append("--target={0}".format(self.triple))
+
         args.append("/Fo" + obj)
         if self.toolchain_type == "clang-cl":
             args.append("--")
@@ -779,6 +791,9 @@ class GccBuilder(Builder):
 
         if self.std:
             args.append("-std={0}".format(self.std))
+
+        if self.triple:
+            args.append("--target={0}".format(self.triple))
 
         args.extend(["-o", obj])
         args.append(source)
