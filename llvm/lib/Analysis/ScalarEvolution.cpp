@@ -7750,7 +7750,7 @@ ScalarEvolution::getOperandsToCreate(Value *V, SmallVectorImpl<Value *> &Ops) {
     {
       auto [BEValueV, StartValueV] =
           valuesForAddRecFromPHI(LI, cast<PHINode>(U));
-      if (BEValueV && StartValueV) {
+      if (BEValueV && StartValueV && !isa<LoadInst>(BEValueV)) {
         Ops.push_back(StartValueV);
         // FIXME: Handle values which feed into BEValueV. This probably needs
         // to be integrated into the main loop of createSCEVIter. We could
