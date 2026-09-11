@@ -7753,9 +7753,18 @@ ScalarEvolution::getOperandsToCreate(Value *V, SmallVectorImpl<Value *> &Ops) {
       auto BackedgeIsNeverAddRec = [&](Value *V) {
         // Check for values we know createAddRecFromPHI can't resolve to an
         // AddRec.
-        if (isa<LoadInst>(V))
+        //
+        // A loop-invariant value can't resolve to an AddRec.
+        Instruction *I = dyn_cast<Instruction>(V);
+        if (!I)
           return true;
-        if (CallInst *CI = dyn_cast<CallInst>(V)) {
+        if (DT.dominates(I, cast<PHINode>(U)->getParent()))
+          return true;
+        // Certain instructions are opaque to ScalarEvolution.
+        if (isa<LoadInst>(I) || isa<PtrToIntInst>(I) || isa<IntToPtrInst>(I) ||
+            isa<ExtractValueInst>(I) || isa<ICmpInst>(I))
+          return true;
+        if (CallInst *CI = dyn_cast<CallInst>(I)) {
           // SCEV has special handling for returned operands.
           if (CI->getReturnedArgOperand())
             return false;
@@ -7781,6 +7790,7 @@ ScalarEvolution::getOperandsToCreate(Value *V, SmallVectorImpl<Value *> &Ops) {
           // SCEV treats any other call as opaque.
           return true;
         }
+        // Consider checking for: "or",
         return false;
       };
       if (BEValueV && StartValueV && !BackedgeIsNeverAddRec(BEValueV)) {
