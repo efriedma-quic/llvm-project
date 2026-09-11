@@ -7750,7 +7750,40 @@ ScalarEvolution::getOperandsToCreate(Value *V, SmallVectorImpl<Value *> &Ops) {
     {
       auto [BEValueV, StartValueV] =
           valuesForAddRecFromPHI(LI, cast<PHINode>(U));
-      if (BEValueV && StartValueV && !isa<LoadInst>(BEValueV)) {
+      auto BackedgeIsNeverAddRec = [&](Value *V) {
+        // Check for values we know createAddRecFromPHI can't resolve to an
+        // AddRec.
+        if (isa<LoadInst>(V))
+          return true;
+        if (CallInst *CI = dyn_cast<CallInst>(V)) {
+          // SCEV has special handling for returned operands.
+          if (CI->getReturnedArgOperand())
+            return false;
+          // SCEV has special handling for a few intrinsics.
+          if (auto *II = dyn_cast<IntrinsicInst>(U)) {
+            switch (II->getIntrinsicID()) {
+            case Intrinsic::abs:
+            case Intrinsic::umax:
+            case Intrinsic::umin:
+            case Intrinsic::smax:
+            case Intrinsic::smin:
+            case Intrinsic::usub_sat:
+            case Intrinsic::uadd_sat:
+            case Intrinsic::start_loop_iterations:
+            case Intrinsic::annotation:
+            case Intrinsic::ptr_annotation:
+              // SCEV has special handling for these intrinsics.
+              return false;
+            default:
+              break;
+            }
+          }
+          // SCEV treats any other call as opaque.
+          return true;
+        }
+        return false;
+      };
+      if (BEValueV && StartValueV && !BackedgeIsNeverAddRec(BEValueV)) {
         Ops.push_back(StartValueV);
         // FIXME: Handle values which feed into BEValueV. This probably needs
         // to be integrated into the main loop of createSCEVIter. We could
