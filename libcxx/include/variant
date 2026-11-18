@@ -472,6 +472,12 @@ struct __traits {
 namespace __access {
 
 struct __union {
+#    if _LIBCPP_STD_VER >= 26 && defined(__cpp_pack_indexing)
+  template <class _Vp, size_t _Ip>
+  _LIBCPP_HIDE_FROM_ABI static constexpr auto&& __get_alt(_Vp&& __v, in_place_index_t<_Ip>) {
+    return remove_cvref_t<_Vp>::template __get_alt<_Ip>(std::forward<_Vp>(__v));
+  }
+#    else
   template <class _Vp>
   _LIBCPP_HIDE_FROM_ABI static constexpr auto&& __get_alt(_Vp&& __v, in_place_index_t<0>) {
     return std::forward<_Vp>(__v).__head;
@@ -481,6 +487,7 @@ struct __union {
   _LIBCPP_HIDE_FROM_ABI static constexpr auto&& __get_alt(_Vp&& __v, in_place_index_t<_Ip>) {
     return __get_alt(std::forward<_Vp>(__v).__tail, in_place_index<_Ip - 1>);
   }
+#    endif
 };
 
 struct __base {
@@ -687,6 +694,111 @@ struct __alt {
   __value_type __value;
 };
 
+#    if _LIBCPP_STD_VER >= 26 && defined(__cpp_pack_indexing)
+template <class... _Types>
+struct __type_list {};
+
+template <size_t _Offset, class _List, class _Indices>
+struct __select_from;
+
+template <size_t _Offset, class... _Types, size_t... _Indices>
+struct __select_from<_Offset, __type_list<_Types...>, index_sequence<_Indices...>> {
+  using type = __type_list<_Types...[_Offset + _Indices]...>;
+};
+
+template <size_t _Offset, class _List, class _Indices>
+using __select_from_t = typename __select_from<_Offset, _List, _Indices>::type;
+
+template <_Trait _DestructibleTrait, size_t _Index, class _Types>
+union __union;
+
+#      define _LIBCPP_VARIANT_INDEXED_UNION(destructible_trait, destructor_definition)                                \
+      template <size_t _Index, class _Tp>                                                                             \
+      union __union<destructible_trait, _Index, __type_list<_Tp>> {                                                   \
+      public:                                                                                                          \
+        _LIBCPP_HIDE_FROM_ABI explicit constexpr __union(__valueless_t) noexcept : __dummy{} {}                       \
+                                                                                                                       \
+        template <size_t _Ip, class... _Args>                                                                          \
+          requires (_Ip == _Index)                                                                                    \
+        _LIBCPP_HIDE_FROM_ABI explicit constexpr __union(in_place_index_t<_Ip>, _Args&&... __args)                     \
+            : __value(in_place, std::forward<_Args>(__args)...) {}                                                    \
+                                                                                                                       \
+        _LIBCPP_HIDE_FROM_ABI __union(const __union&)            = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union(__union&&)                 = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union& operator=(const __union&) = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union& operator=(__union&&)      = default;                                            \
+        destructor_definition;                                                                                         \
+                                                                                                                       \
+        template <size_t _Ip, class _Vp>                                                                               \
+        _LIBCPP_HIDE_FROM_ABI static constexpr auto&& __get_alt(_Vp&& __v) {                                           \
+          static_assert(_Ip == _Index);                                                                                \
+          return std::forward<_Vp>(__v).__value;                                                                       \
+        }                                                                                                              \
+      private:                                                                                                         \
+        char __dummy;                                                                                                  \
+        __alt<_Index, _Tp> __value;                                                                                    \
+        friend struct __access::__union;                                                                               \
+      };                                                                                                               \
+                                                                                                                       \
+      template <size_t _Index, class... _Types>                                                                        \
+        requires (sizeof...(_Types) > 1)                                                                              \
+      union __union<destructible_trait, _Index, __type_list<_Types...>> {                                              \
+      private:                                                                                                         \
+        static constexpr size_t __left_size = sizeof...(_Types) / 2;                                                   \
+        using __types                        = __type_list<_Types...>;                                                 \
+        using __left_types                   = __select_from_t<                                                        \
+            0, __types, make_index_sequence<__left_size>>;                                                             \
+        using __right_types                  = __select_from_t<                                                        \
+            __left_size, __types, make_index_sequence<sizeof...(_Types) - __left_size>>;                              \
+                                                                                                                       \
+      public:                                                                                                          \
+        _LIBCPP_HIDE_FROM_ABI explicit constexpr __union(__valueless_t) noexcept : __dummy{} {}                       \
+                                                                                                                       \
+        template <size_t _Ip, class... _Args>                                                                          \
+          requires (_Ip < _Index + __left_size)                                                                        \
+        _LIBCPP_HIDE_FROM_ABI explicit constexpr __union(in_place_index_t<_Ip>, _Args&&... __args)                     \
+            : __left(in_place_index<_Ip>, std::forward<_Args>(__args)...) {}                                           \
+                                                                                                                       \
+        template <size_t _Ip, class... _Args>                                                                          \
+          requires (_Ip >= _Index + __left_size && _Ip < _Index + sizeof...(_Types))                                  \
+        _LIBCPP_HIDE_FROM_ABI explicit constexpr __union(in_place_index_t<_Ip>, _Args&&... __args)                     \
+            : __right(in_place_index<_Ip>, std::forward<_Args>(__args)...) {}                                          \
+                                                                                                                       \
+        _LIBCPP_HIDE_FROM_ABI __union(const __union&)            = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union(__union&&)                 = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union& operator=(const __union&) = default;                                            \
+        _LIBCPP_HIDE_FROM_ABI __union& operator=(__union&&)      = default;                                            \
+        destructor_definition;                                                                                         \
+                                                                                                                       \
+        template <size_t _Ip, class _Vp>                                                                               \
+        _LIBCPP_HIDE_FROM_ABI static constexpr auto&& __get_alt(_Vp&& __v) {                                           \
+          if constexpr (_Ip < _Index + __left_size)                                                                    \
+            return __union<destructible_trait, _Index, __left_types>::template __get_alt<_Ip>(                        \
+                std::forward<_Vp>(__v).__left);                                                                        \
+          else                                                                                                         \
+            return __union<destructible_trait, _Index + __left_size, __right_types>::template __get_alt<_Ip>(          \
+                std::forward<_Vp>(__v).__right);                                                                       \
+        }                                                                                                              \
+      private:                                                                                                         \
+        char __dummy;                                                                                                  \
+        __union<destructible_trait, _Index, __left_types> __left;                                                      \
+        __union<destructible_trait, _Index + __left_size, __right_types> __right;                                      \
+        friend struct __access::__union;                                                                               \
+      }
+
+_LIBCPP_VARIANT_INDEXED_UNION(_Trait::_TriviallyAvailable,
+                              _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 ~__union() = default);
+_LIBCPP_VARIANT_INDEXED_UNION(
+    _Trait::_Available, _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 ~__union() {} _LIBCPP_EAT_SEMICOLON);
+_LIBCPP_VARIANT_INDEXED_UNION(
+    _Trait::_Unavailable, _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 ~__union() = delete);
+
+#      undef _LIBCPP_VARIANT_INDEXED_UNION
+
+template <_Trait _DestructibleTrait, size_t _Index, class... _Types>
+using __variant_union = __union<_DestructibleTrait, _Index, __type_list<_Types...>>;
+
+#    else
 template <_Trait _DestructibleTrait, size_t _Index, class... _Types>
 union __union;
 
@@ -729,6 +841,10 @@ _LIBCPP_VARIANT_UNION(_Trait::_Unavailable, _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTE
 
 #    undef _LIBCPP_VARIANT_UNION
 
+template <_Trait _DestructibleTrait, size_t _Index, class... _Types>
+using __variant_union = __union<_DestructibleTrait, _Index, _Types...>;
+#    endif
+
 template <_Trait _DestructibleTrait, class... _Types>
 class __base {
 public:
@@ -758,7 +874,7 @@ protected:
 
   _LIBCPP_HIDE_FROM_ABI static constexpr size_t __size() { return sizeof...(_Types); }
 
-  __union<_DestructibleTrait, 0, _Types...> __data;
+  __variant_union<_DestructibleTrait, 0, _Types...> __data;
   __index_t __index;
 
   friend struct __access::__base;
